@@ -1,0 +1,67 @@
+(() => {
+const $ = (s, root=document) => root.querySelector(s);
+const readStories = () => {
+  try { const saved = localStorage.getItem("anf_stories"); if (saved) return JSON.parse(saved); } catch(e) {}
+  return (window.DEFAULT_STORIES || []).map(x => ({...x}));
+};
+const saveStories = stories => localStorage.setItem("anf_stories", JSON.stringify(stories));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const getImage = s => s.image || "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=1200&q=85";
+function storyCard(s) {
+  return `<article class="story-card"><a class="story-image" href="story.html?id=${encodeURIComponent(s.id)}"><img src="${esc(getImage(s))}" alt="${esc(s.title)}" loading="lazy"><span class="image-tag">${esc(s.world)}</span><span class="image-arrow">↗</span></a><div class="story-card-content"><div class="story-meta">${esc(s.mission)} <span>·</span> ${esc(s.year)}</div><h3><a href="story.html?id=${encodeURIComponent(s.id)}">${esc(s.title)}</a></h3><p>${esc(s.summary)}</p><div class="archive-mini"><span><b>LOCATION</b>${esc(s.location||s.world)}</span><span><b>STATUS</b>${esc(s.status||"Archived record")}</span></div><a class="text-link" href="story.html?id=${encodeURIComponent(s.id)}">Open archive record →</a></div></article>`;
+}
+function renderCards(target, stories) { const el=$(target); if(el) el.innerHTML = stories.length ? stories.map(storyCard).join("") : '<p class="muted">No stories found. Try another search or add a story in the admin console.</p>'; }
+function initStories() {
+ const stories=readStories(); renderCards("#featured-stories", stories.slice(0,3)); renderCards("#archive-stories",stories); renderCards("#explorer-stories",stories);
+ const search=$("#search-input"), world=$("#world-filter");
+ function filter(){ const q=(search?.value||"").toLowerCase(); const w=world?.value||"all"; renderCards("#explorer-stories",stories.filter(s=>(w==="all"||s.world===w)&&[s.title,s.summary,s.mission,s.world].join(" ").toLowerCase().includes(q))); }
+ search?.addEventListener("input",filter); world?.addEventListener("change",filter);
+ const count=$("#stat-stories"); if(count) count.textContent=String(stories.length).padStart(2,"0");
+ const detail=$("#story-detail");
+ if(detail){ const id=new URLSearchParams(location.search).get("id"); const s=stories.find(x=>x.id===id)||stories[0]; if(!s){detail.innerHTML="<h1>Story not found.</h1>";return;} document.title=s.title+" — Abandoned, Not Forgotten"; detail.innerHTML=`<a class="text-link" href="archive.html">← Back to archive</a><div class="story-detail-hero"><img src="${esc(getImage(s))}" alt="${esc(s.title)}"><div class="detail-overlay"><div class="eyebrow">${esc(s.world)} / ${esc(s.mission)} / ${esc(s.year)}</div><h1>${esc(s.title)}</h1><p>${esc(s.summary)}</p></div></div><article class="article-copy"><div class="eyebrow">FIELD NOTE / ARCHIVE DATA</div><p>${esc(s.body).replace(/\n/g,"<br><br>")}</p><div class="archive-data-grid"><div><span>OBJECT / EVIDENCE</span><strong>${esc(s.object||s.title)}</strong></div><div><span>LOCATION</span><strong>${esc(s.location||s.world)}</strong></div><div><span>MISSION DATE</span><strong>${esc(s.year)}</strong></div><div><span>CURRENT STATUS</span><strong>${esc(s.status||"See mission source")}</strong></div><div class="wide"><span>WHY IT MATTERS</span><strong>${esc(s.significance||s.summary)}</strong></div><div class="wide"><span>RESEARCH / EVIDENCE TRAIL</span><strong>${esc(s.evidence||s.mission)}</strong></div></div>${s.source?`<a class="button ghost" href="${esc(s.source)}" target="_blank" rel="noopener">Open NASA / mission source ↗</a>`:""}</article>`; }
+}
+function initSpace() {
+ const canvas=$("#space-canvas"); if(!canvas) return; const ctx=canvas.getContext("2d"); let w,h,dpr,stars=[],meteors=[],raf;
+ function resize(){dpr=Math.min(window.devicePixelRatio||1,2);w=canvas.clientWidth=window.innerWidth;h=canvas.clientHeight=Math.max(document.documentElement.scrollHeight,window.innerHeight);canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);stars=Array.from({length:Math.min(230,Math.floor(w*h/7000))},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.3+.2,a:Math.random()*.7+.2,p:Math.random()*6}));}
+ function meteor(){meteors.push({x:Math.random()*w*.95+w*.05,y:Math.random()*h*.55-40,vx:-4-Math.random()*5,vy:3+Math.random()*4,len:60+Math.random()*100,life:0,max:35+Math.random()*35});}
+ let tick=0; function draw(){ctx.clearRect(0,0,w,h);tick++;for(const s of stars){const alpha=s.a*(.7+.3*Math.sin(tick*.015+s.p));ctx.fillStyle=`rgba(190,215,255,${alpha})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();}
+ if(Math.random()<.025) meteor(); meteors=meteors.filter(m=>m.life<m.max); for(const m of meteors){m.x+=m.vx;m.y+=m.vy;m.life++;const grad=ctx.createLinearGradient(m.x,m.y,m.x-m.vx*m.len/8,m.y-m.vy*m.len/8);grad.addColorStop(0,"rgba(255,255,255,.95)");grad.addColorStop(1,"rgba(110,160,255,0)");ctx.strokeStyle=grad;ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(m.x,m.y);ctx.lineTo(m.x-m.vx*m.len/8,m.y-m.vy*m.len/8);ctx.stroke();}
+ raf=requestAnimationFrame(draw);}
+ resize();draw();window.addEventListener("resize",()=>{cancelAnimationFrame(raf);resize();draw();});
+}
+
+function initCosmicCursor(){
+ if(!window.matchMedia || !window.matchMedia("(hover:hover) and (pointer:fine)").matches) return;
+ if(document.getElementById("cosmic-cursor")) return;
+ const cursor=document.createElement("div"); cursor.id="cosmic-cursor"; cursor.setAttribute("aria-hidden","true");
+ cursor.innerHTML='<span class="cursor-ring"></span><span class="cursor-core"></span><span class="cursor-orbit"><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="cursor-spark spark-a"></span><span class="cursor-spark spark-b"></span><span class="cursor-spark spark-c"></span>';
+ document.body.appendChild(cursor);
+ let x=-100,y=-100,raf=0;
+ document.addEventListener("mousemove",e=>{x=e.clientX-33;y=e.clientY-33;if(!raf)raf=requestAnimationFrame(()=>{cursor.style.transform=`translate3d(${x}px,${y}px,0)`;cursor.classList.add("visible");raf=0;});},{passive:true});
+ document.addEventListener("mouseleave",()=>cursor.classList.remove("visible"));
+ document.addEventListener("mouseenter",()=>cursor.classList.add("visible"));
+}
+
+function initNav(){ $("#menu-toggle")?.addEventListener("click",()=>$("#main-nav")?.classList.toggle("nav-open")); $("#lang-toggle")?.addEventListener("click",()=>{const btn=$("#lang-toggle");const arabic=document.documentElement.lang==="ar";document.documentElement.lang=arabic?"en":"ar";btn.textContent=arabic?"العربية":"English";const map=arabic?{"navHome":"Home","navExplorer":"Explorer","navArchive":"Archive","navLab":"Mission Lab","navSources":"Sources"}:{"navHome":"الرئيسية","navExplorer":"استكشف","navArchive":"الأرشيف","navLab":"مختبر المهمة","navSources":"المصادر"};document.querySelectorAll("[data-i18n]").forEach(el=>{if(map[el.dataset.i18n])el.textContent=map[el.dataset.i18n];});document.body.classList.toggle("rtl",!arabic);}); }
+function initQuiz(){const qs=[{q:"Which world has hosted human moonwalks?",a:["Moon","Mars","Venus"],correct:0,f:"Humans have walked on the Moon during NASA's Apollo missions."},{q:"Which vehicle explored Mars in 1997?",a:["Sojourner","Lunar Rover","Ingenuity"],correct:0,f:"Sojourner was the first successful Mars rover."},{q:"What do lunar laser reflectors help measure?",a:["Moon–Earth distance","Wind speed","Cloud height"],correct:0,f:"Laser pulses bounced from reflectors help scientists measure the Earth–Moon distance."},{q:"Ingenuity was designed to demonstrate what?",a:["Powered flight on Mars","Deep-sea diving","A lunar landing"],correct:0,f:"Ingenuity demonstrated powered, controlled flight on another planet."}];let n=0;const q=$("#quiz-question"),opts=$("#quiz-options"),fb=$("#quiz-feedback"),next=$("#next-question"),count=$("#quiz-count");if(!q)return;function show(){count.textContent=`QUESTION ${String(n+1).padStart(2,"0")} / ${String(qs.length).padStart(2,"0")}`;q.textContent=qs[n].q;fb.textContent="";opts.innerHTML=qs[n].a.map((a,i)=>`<button class="quiz-option" data-i="${i}">${a}</button>`).join("");opts.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{if(opts.dataset.done)return;opts.dataset.done="1";const ok=Number(b.dataset.i)===qs[n].correct;b.classList.add(ok?"correct":"incorrect");fb.textContent=(ok?"Correct! ":"Not quite. ")+qs[n].f;opts.querySelectorAll("button").forEach(x=>x.disabled=true);}));opts.dataset.done="";next.textContent=n===qs.length-1?"Restart quiz ↻":"Next question →";}next?.addEventListener("click",()=>{n=(n+1)%qs.length;show();});show();}
+function initAdmin(){
+ const login=$("#login-form");if(!login)return;
+ const loginPanel=$("#login-panel"),dash=$("#admin-dashboard"),list=$("#admin-story-list"),form=$("#story-form");
+ let stories=readStories(),currentImage="";
+ const logged=()=>sessionStorage.getItem("anf_admin")==="1";
+ function setAuth(on){loginPanel.hidden=on;dash.hidden=!on;if(on)renderList();}
+ function renderList(){list.innerHTML=stories.map(s=>`<button type="button" class="admin-story ${s.id===$("#story-id").value?"selected":""}" data-id="${esc(s.id)}"><strong>${esc(s.title)}</strong><small>${esc(s.world)} · ${esc(s.year)}</small></button>`).join("");list.querySelectorAll("[data-id]").forEach(b=>b.addEventListener("click",()=>loadStory(b.dataset.id)));}
+ function clearForm(){form.reset();$("#story-id").value="";currentImage="";$("#image-preview").innerHTML="";$("#delete-story").disabled=true;$("#save-status").textContent="New story";renderList();}
+ function loadStory(id){const s=stories.find(x=>x.id===id);if(!s)return;$("#story-id").value=s.id;$("#story-title").value=s.title;$("#story-world").value=s.world;$("#story-mission").value=s.mission;$("#story-year").value=s.year;$("#story-summary").value=s.summary;$("#story-body").value=s.body;$("#story-image-url").value=s.image?.startsWith("data:")?"":(s.image||"");$("#story-source").value=s.source||"";$("#story-object").value=s.object||"";$("#story-location").value=s.location||"";$("#story-status").value=s.status||"";$("#story-significance").value=s.significance||"";$("#story-evidence").value=s.evidence||"";currentImage=s.image||"";$("#story-image-file").value="";showPreview();$("#delete-story").disabled=false;$("#save-status").textContent="Editing story";renderList();}
+ function showPreview(){const p=$("#image-preview");p.innerHTML=currentImage?`<img src="${esc(currentImage)}" alt="Image preview"><button type="button" id="remove-image" class="button ghost small">Remove image</button>`:"";$("#remove-image")?.addEventListener("click",()=>{currentImage="";$("#story-image-url").value="";$("#story-image-file").value="";showPreview();});}
+ $("#login-error").textContent="";login.addEventListener("submit",e=>{e.preventDefault();if($("#admin-user").value==="admin"&&$("#admin-pass").value==="space2026"){sessionStorage.setItem("anf_admin","1");setAuth(true);clearForm();}else $("#login-error").textContent="Incorrect username or password.";});
+ $("#logout-button").addEventListener("click",()=>{sessionStorage.removeItem("anf_admin");setAuth(false);});
+ $("#new-story").addEventListener("click",clearForm);
+ $("#story-image-url").addEventListener("input",()=>{if($("#story-image-url").value.trim()){currentImage=$("#story-image-url").value.trim();showPreview();}});
+ $("#story-image-file").addEventListener("change",e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024){alert("Please choose an image smaller than 2 MB.");e.target.value="";return;}const reader=new FileReader();reader.onload=()=>{currentImage=String(reader.result);$("#story-image-url").value="";showPreview();};reader.readAsDataURL(file);});
+ form.addEventListener("submit",e=>{e.preventDefault();const id=$("#story-id").value||("story-"+Date.now());const existing=stories.find(x=>x.id===id)||{};const story={...existing,id,title:$("#story-title").value.trim(),world:$("#story-world").value,mission:$("#story-mission").value.trim(),year:$("#story-year").value.trim(),summary:$("#story-summary").value.trim(),body:$("#story-body").value.trim(),object:$("#story-object").value.trim(),location:$("#story-location").value.trim(),status:$("#story-status").value.trim(),significance:$("#story-significance").value.trim(),evidence:$("#story-evidence").value.trim(),image:$("#story-image-url").value.trim()||currentImage,source:$("#story-source").value.trim()};const i=stories.findIndex(s=>s.id===id);if(i>=0)stories[i]=story;else stories.unshift(story);try{saveStories(stories);$("#story-id").value=id;$("#save-status").textContent="Saved successfully ✓";$("#delete-story").disabled=false;renderList();}catch(err){$("#save-status").textContent="Storage full. Use a smaller image.";alert("Could not save. Try an image under 2 MB or use an image URL.");}});
+ $("#delete-story").addEventListener("click",()=>{const id=$("#story-id").value;if(!id)return;if(!confirm("Delete this story?"))return;stories=stories.filter(s=>s.id!==id);saveStories(stories);clearForm();$("#save-status").textContent="Story deleted";});
+ $("#delete-story").disabled=true;setAuth(logged());
+}
+document.addEventListener("DOMContentLoaded",()=>{initSpace();initCosmicCursor();initNav();initStories();initQuiz();initAdmin();});
+})();
